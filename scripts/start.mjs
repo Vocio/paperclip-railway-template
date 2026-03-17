@@ -31,6 +31,11 @@ const HOME           = process.env.PAPERCLIP_HOME || "/paperclip";
 const CONFIG_PATH    = join(HOME, "config.json");
 const INVITE_FILE    = join(HOME, "bootstrap-invite.txt");
 
+// Strip ANSI escape sequences (colors, cursor, etc.) from strings
+function stripAnsi(str) {
+  return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+}
+
 // ── Global state ─────────────────────────────────────────────────────────────
 
 let paperclipProc  = null;   // child_process handle
@@ -136,12 +141,13 @@ function startPaperclip() {
     const text = chunk.toString();
     process.stdout.write(text);
 
-    // Capture bootstrap invite URL
-    const match = text.match(/https?:\/\/\S+\/invite\/pcp_bootstrap_\S+/);
+    // Capture bootstrap invite URL (strip ANSI codes first so \x1b[39m etc. aren't captured)
+    const clean = stripAnsi(text);
+    const match = clean.match(/https?:\/\/\S+\/invite\/pcp_bootstrap_\S+/);
     if (match) {
       inviteUrl = match[0].trim();
       writeFileSync(INVITE_FILE, inviteUrl);
-      console.log(`\n✅ Bootstrap invite URL captured.\n`);
+      console.log(`\n✅ Bootstrap invite URL saved to ${INVITE_FILE}\n`);
     }
 
     // Detect ready
@@ -263,7 +269,7 @@ function startServer() {
 
     if (path === "/setup/invite" && method === "GET") {
       if (!inviteUrl && existsSync(INVITE_FILE)) {
-        try { inviteUrl = readFileSync(INVITE_FILE, "utf8").trim(); } catch(_) {}
+        try { inviteUrl = stripAnsi(readFileSync(INVITE_FILE, "utf8")).trim(); } catch(_) {}
       }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ url: inviteUrl, paperclipReady }));
@@ -291,7 +297,8 @@ function startServer() {
       let out = "";
       proc.stdout.on("data", d => {
         out += d.toString();
-        const match = out.match(/https?:\/\/\S+\/invite\/pcp_bootstrap_\S+/);
+        const clean = stripAnsi(out);
+        const match = clean.match(/https?:\/\/\S+\/invite\/pcp_bootstrap_\S+/);
         if (match) {
           inviteUrl = match[0].trim();
           writeFileSync(INVITE_FILE, inviteUrl);
